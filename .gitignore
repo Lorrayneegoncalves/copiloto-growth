@@ -1,0 +1,22 @@
+# Segredos (NUNCA commitar)
+.env
+.streamlit/secrets.toml
+
+# Ambiente virtual e caches do Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Configuracao local do Claude Code
+.claude/
+
+# Briefing pessoal (nao publicar)
+BRIEFING_copiloto_growth.md
