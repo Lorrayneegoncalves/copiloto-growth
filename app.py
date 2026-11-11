@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src import agente, llm, simular_dados
+from src import agente, limites, llm, simular_dados
 from src.abteste import METRICAS, teste_ab, teste_ab_por_cidade
 from src.metricas import funil, funil_para_tabela, segmentar
 
@@ -211,11 +211,26 @@ def mostrar_validacao(r: dict):
 
 
 LIMITE_PERGUNTAS_POR_VISITA = 10
+LIMITE_DIARIO_IA = 50  # usos do LLM por dia, somando todos os visitantes
+MSG_LIMITE_DIARIO = ("Limite diário de uso da IA atingido (controle de custo do app público). "
+                     "Volte amanhã — as abas Funil e Teste A/B continuam funcionando.")
+
+
+@st.cache_resource
+def contador_diario() -> limites.ContadorDiario:
+    """Um único contador compartilhado por todos os visitantes."""
+    return limites.ContadorDiario(LIMITE_DIARIO_IA)
+
+
+class LimiteDiarioAtingido(RuntimeError):
+    pass
 
 
 @st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
 def relatorio_do_dia(_df: pd.DataFrame, _cliente) -> dict:
     """Gera o relatório uma vez e reaproveita por 24 h (os dados são fixos; economiza API)."""
+    if not contador_diario().consumir():
+        raise LimiteDiarioAtingido(MSG_LIMITE_DIARIO)  # exceção não fica no cache
     return agente.gerar_relatorio(_df, _cliente)
 
 
@@ -229,6 +244,8 @@ with aba_rel:
         with st.spinner("Calculando e escrevendo o relatório..."):
             try:
                 st.session_state["relatorio"] = relatorio_do_dia(df, cliente)
+            except LimiteDiarioAtingido as e:
+                st.warning(str(e))
             except Exception as e:  # noqa: BLE001
                 st.error(f"Erro ao chamar o LLM: {e}")
     rel = st.session_state.get("relatorio")
@@ -260,21 +277,27 @@ with aba_perg:
         for col, ex in zip(cols, EXEMPLOS):
             if col.button(ex, width="stretch"):
                 st.session_state["pergunta"] = ex
-        pergunta = st.text_input("Sua pergunta", key="pergunta")
+        pergunta = st.text_input("Sua pergunta", key="pergunta",
+                                 max_chars=agente.MAX_CARACTERES_PERGUNTA)
         usadas = st.session_state.get("perguntas_feitas", 0)
         restantes = LIMITE_PERGUNTAS_POR_VISITA - usadas
         contador = st.empty()
         if st.button("Perguntar", type="primary", disabled=restantes <= 0) and pergunta.strip():
             st.session_state["perguntas_feitas"] = usadas + 1
-            with st.spinner("Consultando as ferramentas..."):
-                try:
-                    st.session_state["resposta"] = agente.responder_pergunta(
-                        pergunta, df, cliente_p)
-                except Exception as e:  # noqa: BLE001
-                    st.error(f"Erro ao chamar o LLM: {e}")
+            # Recusas por palavra-chave não chamam o LLM, então não gastam o limite diário.
+            if agente.checar_escopo(pergunta) is None and not contador_diario().consumir():
+                st.warning(MSG_LIMITE_DIARIO)
+            else:
+                with st.spinner("Consultando as ferramentas..."):
+                    try:
+                        st.session_state["resposta"] = agente.responder_pergunta(
+                            pergunta, df, cliente_p)
+                    except Exception as e:  # noqa: BLE001
+                        st.error(f"Erro ao chamar o LLM: {e}")
         restantes = LIMITE_PERGUNTAS_POR_VISITA - st.session_state.get("perguntas_feitas", 0)
         contador.caption(f"Perguntas restantes nesta visita: {max(restantes, 0)} de "
-                         f"{LIMITE_PERGUNTAS_POR_VISITA} (limite para controlar o custo da API).")
+                         f"{LIMITE_PERGUNTAS_POR_VISITA} · usos de IA restantes hoje (todos os "
+                         f"visitantes): {contador_diario().restantes()} de {LIMITE_DIARIO_IA}.")
         resp = st.session_state.get("resposta")
         if resp:
             st.markdown(f"**Pergunta:** {resp['pergunta']}")

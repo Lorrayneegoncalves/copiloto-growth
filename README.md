@@ -49,7 +49,7 @@ Relatório e Pergunte; Funil e Teste A/B funcionam sem chave).
 
 ```bash
 streamlit run app.py         # abre o app
-pytest                       # 37 testes, sem chamar a API (usa um LLM falso)
+pytest                       # 43 testes, sem chamar a API (usa um LLM falso)
 python -m tests.avaliar      # avaliação com perguntas reais (gasta créditos da API)
 python -m src.simular_dados  # regenera data/entregadores.csv (mesmo resultado sempre)
 ```
@@ -94,8 +94,24 @@ flowchart LR
 - **Cabeçalho "dados simulados" adicionado pelo código**, nunca pelo LLM.
 - **Recusa em duas camadas:** palavras-chave (previsível e testável) + decisão do LLM de não usar ferramentas.
 - **Provedor isolado em `src/llm.py`:** trocar de provedor exige mudar só esse arquivo.
-- **Controle de custo no app público:** o relatório é gerado uma vez e reaproveitado por 24 h
-  (os dados são fixos) e há limite de 10 perguntas por visita.
+- **Controle de custo no app público** (ver seção abaixo).
+
+## Controle de custo
+
+O app é público e usa uma API paga, então o custo tem várias barreiras:
+
+| Onde | Proteção |
+|---|---|
+| Conta da API | Limite mensal **rígido** no projeto (as chamadas falham ao atingir o teto) e alertas por e-mail |
+| App | Relatório gerado uma vez e reaproveitado por 24 h (os dados são fixos) |
+| App | Limite diário de **50 usos de IA somando todos os visitantes** (recarregar a página não zera) |
+| App | Limite de 10 perguntas por visita |
+| App | Perguntas de no máximo 300 caracteres; recusas por palavra-chave não chamam o LLM |
+| `src/llm.py` | Teto de tamanho por resposta: 6.000 tokens para texto e 1.500 para escolha de ferramentas. Valores definidos a partir do consumo **medido** (maior relatório: ~2.300 tokens; maior escolha de ferramenta: ~230) |
+
+Consumo medido por chamada (`gpt-5-mini`): relatório ≈ 4.100 tokens de entrada e 1.700–2.300 de
+saída (dos quais 1.100–1.700 são raciocínio interno); pergunta ≈ 2 chamadas, somando
+≈ 2.000–2.700 de entrada e 900–1.500 de saída.
 
 ## Como os dados foram gerados
 
@@ -109,9 +125,9 @@ flowchart LR
 
 ## Avaliação
 
-**Testes automáticos (`pytest`, 37 testes, sem API):** funil bate com o CSV, teste A/B com
+**Testes automáticos (`pytest`, 43 testes, sem API):** funil bate com o CSV, teste A/B com
 diferença conhecida e sem diferença, validador detecta número inventado, recusas, nova tentativa
-do validador, formatação e cobertura das 6 cidades.
+do validador, formatação, cobertura das 6 cidades e limites de custo.
 
 **Avaliação com o LLM real** ([`tests/avaliar.py`](tests/avaliar.py)): 10 perguntas com o
 comportamento esperado definido antes de rodar (7 que devem ser respondidas, 3 que devem ser recusadas).
@@ -135,8 +151,9 @@ teremos em dezembro?" e "dados do entregador de id 123") foram recusadas pelo LL
   dependem do LLM para serem recusadas.
 - **Estatística:** olhar 6 cidades sem correção para comparações múltiplas aumenta a chance de
   achar diferença por acaso (o app avisa, mas não corrige). Intervalo de Wald (aproximação normal).
-- **Limite de perguntas por visita** é por sessão do navegador (recarregar a página zera). A
-  proteção real de custo é o limite de gasto configurado na conta da API.
+- **Limites do app:** o limite por visita zera ao recarregar a página, e o limite diário zera
+  quando o app reinicia (o contador fica na memória do servidor). A proteção definitiva de custo
+  é o limite rígido configurado na conta da API.
 - **Windows:** o pyarrow 26 foi bloqueado pelo Controle de Aplicativo Inteligente; a versão está fixada em 25.0.1.
 
 ## Próximos passos

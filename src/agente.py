@@ -45,12 +45,15 @@ Use no máximo 350 palavras no total. Cite obrigatoriamente os itens de "destaqu
 (por exemplo, cidades onde a diferença foi negativa).
 Não escreva título geral nem cabeçalho: ele é adicionado pelo sistema."""
 
+MAX_CARACTERES_PERGUNTA = 300
+
 MENSAGEM_RECUSA = {
     "previsao": "Não faço previsões de resultados futuros. Posso explicar o que os dados "
                 "simulados mostram até agora (funil, segmentos e teste A/B).",
     "dados_pessoais": "Não respondo sobre dados pessoais ou de pessoas específicas. "
                       "Trabalho apenas com números agregados.",
     "alterar_dados": "Não posso alterar, apagar ou inserir dados. O app é somente leitura.",
+    "muito_longa": "A pergunta é longa demais. Use no máximo 300 caracteres.",
     "fora_do_escopo": "Essa pergunta está fora do escopo. Posso responder sobre o funil de "
                       "conversão, segmentos por cidade/canal e o teste A/B da campanha (simulada).",
 }
@@ -77,6 +80,8 @@ def _normalizar(texto: str) -> str:
 
 def checar_escopo(pergunta: str) -> str | None:
     """Filtro determinístico (sem LLM). Devolve o motivo da recusa ou None se estiver ok."""
+    if len(pergunta) > MAX_CARACTERES_PERGUNTA:
+        return "muito_longa"
     texto = _normalizar(pergunta)
     if not texto.strip():
         return "fora_do_escopo"

@@ -18,6 +18,15 @@ from dataclasses import dataclass, field
 
 MODELO_PADRAO = "gpt-5-mini"
 
+# Teto de tokens gerados por chamada (inclui o raciocínio interno do modelo).
+# Valores definidos a partir do consumo medido; ver README > Controle de custo.
+MAX_TOKENS_TEXTO = 6000        # maior medido: 2.300 (relatório)
+MAX_TOKENS_FERRAMENTAS = 1500  # maior medido: 207
+
+
+class RespostaCortada(RuntimeError):
+    """O LLM atingiu o teto de tamanho antes de terminar a resposta."""
+
 
 @dataclass
 class RespostaFerramentas:
@@ -64,13 +73,34 @@ class ClienteOpenAI(ClienteLLM):
         from openai import OpenAI  # importado aqui para os testes rodarem sem rede
         self.cliente = OpenAI(api_key=chave)
         self.modelo = modelo
+        self.usos: list[dict] = []  # consumo de cada chamada (para medir custo)
+
+    def _registrar(self, tipo: str, resposta) -> None:
+        u = resposta.usage
+        detalhes = getattr(u, "completion_tokens_details", None)
+        self.usos.append({
+            "tipo": tipo,
+            "entrada": u.prompt_tokens,
+            "saida": u.completion_tokens,
+            "raciocinio": getattr(detalhes, "reasoning_tokens", None),
+            "fim": resposta.choices[0].finish_reason,
+        })
+
+    @staticmethod
+    def _checar_corte(resposta) -> None:
+        if resposta.choices[0].finish_reason == "length":
+            raise RespostaCortada("A resposta do LLM passou do tamanho máximo permitido e foi "
+                                  "interrompida. Tente uma pergunta mais simples.")
 
     def gerar_texto(self, sistema: str, usuario: str) -> str:
         resposta = self.cliente.chat.completions.create(
             model=self.modelo,
             messages=[{"role": "system", "content": sistema},
                       {"role": "user", "content": usuario}],
+            max_completion_tokens=MAX_TOKENS_TEXTO,
         )
+        self._registrar("texto", resposta)
+        self._checar_corte(resposta)
         return resposta.choices[0].message.content or ""
 
     def escolher_ferramentas(self, sistema: str, pergunta: str,
@@ -86,7 +116,10 @@ class ClienteOpenAI(ClienteLLM):
                       {"role": "user", "content": pergunta}],
             tools=tools,
             tool_choice="auto",
+            max_completion_tokens=MAX_TOKENS_FERRAMENTAS,
         )
+        self._registrar("ferramentas", resposta)
+        self._checar_corte(resposta)
         msg = resposta.choices[0].message
         chamadas = []
         for tc in msg.tool_calls or []:
