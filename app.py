@@ -165,8 +165,8 @@ with aba_ab:
         xaxis_title="Diferença B − A (pontos percentuais)",
         yaxis=dict(autorange="reversed"), height=420, separators=",.", margin=dict(l=10, r=10, t=50, b=10))
     st.plotly_chart(fig_ab, width="stretch")
-    st.dataframe(tabela_br(tab).format({"p-valor": lambda v: "—" if pd.isna(v)
-                                        else f"{v:.4f}".replace(".", ",")}),
+    st.dataframe(tabela_br(tab).format(lambda v: "—" if pd.isna(v)
+                                       else f"{v:.4f}".replace(".", ","), subset=["p-valor"]),
                  hide_index=True, width="stretch")
 
     negativas = [c for c, r in por_cidade.items() if (r["diferenca_pp"] or 0) < 0]
