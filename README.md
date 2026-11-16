@@ -14,7 +14,9 @@ calculados e escreve a explicação; um validador confere se cada número do tex
 ## 🔗 Links
 
 - **App online:** _(link do Streamlit Community Cloud — em breve)_
-- **Vídeo de demonstração:** _(em breve)_
+- **Vídeo de demonstração (80 s, com legendas):** https://youtu.be/dHskxVLGyzo
+
+[![Assista à demonstração do Copiloto de Growth](docs/capa_video.jpg)](https://youtu.be/dHskxVLGyzo)
 
 ## O que o app faz
 
